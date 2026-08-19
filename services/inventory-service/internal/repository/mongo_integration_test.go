@@ -61,6 +61,28 @@ func TestReservationRepository_Save(t *testing.T) {
 	require.WithinDuration(t, res.ReservedAt, found.ReservedAt, time.Second)
 }
 
+func TestReservationRepository_Save_WrapsDriverError(t *testing.T) {
+	db := setupMongo(t)
+	repo := repository.NewReservationRepository(db)
+
+	// An already-canceled context forces InsertOne to fail without a real
+	// network partition, exercising the fmt.Errorf wrapping branch in
+	// Save without needing to fake out the mongo driver.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := repo.Save(ctx, domain.Reservation{
+		OrderID:    "order-3",
+		ItemSKU:    "sku-3",
+		Quantity:   1,
+		Status:     domain.ReservationConfirmed,
+		ReservedAt: time.Now().UTC(),
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "save reservation")
+}
+
 func TestReservationRepository_Save_Backordered(t *testing.T) {
 	db := setupMongo(t)
 	repo := repository.NewReservationRepository(db)

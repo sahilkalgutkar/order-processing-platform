@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -21,6 +22,7 @@ import (
 type fakeStore struct {
 	orders  map[string]*domain.Order
 	saveErr error
+	findErr error
 }
 
 func newFakeStore() *fakeStore {
@@ -36,6 +38,9 @@ func (f *fakeStore) Save(_ context.Context, o *domain.Order) error {
 }
 
 func (f *fakeStore) FindByID(_ context.Context, id string) (*domain.Order, error) {
+	if f.findErr != nil {
+		return nil, f.findErr
+	}
 	o, ok := f.orders[id]
 	if !ok {
 		return nil, repository.ErrOrderNotFound
@@ -133,6 +138,81 @@ func TestGetOrder_NotFound(t *testing.T) {
 	defer resp.Body.Close()
 
 	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
+func TestCreateOrder_InvalidJSON(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(newFakeStore(), &fakePublisher{})
+	defer srv.Close()
+
+	body := bytes.NewBufferString(`{not-json`)
+	resp, err := http.Post(srv.URL+"/orders", "application/json", body)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+	var got map[string]string
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&got))
+	require.Equal(t, "invalid request body", got["error"])
+}
+
+func TestCreateOrder_SaveError(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	store.saveErr = errors.New("connection refused")
+	pub := &fakePublisher{}
+	srv := newTestServer(store, pub)
+	defer srv.Close()
+
+	body := bytes.NewBufferString(`{"customer_id":"cust-1","item_sku":"sku-1","quantity":1}`)
+	resp, err := http.Post(srv.URL+"/orders", "application/json", body)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	require.Empty(t, pub.published)
+
+	var got map[string]string
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&got))
+	require.Equal(t, "failed to save order", got["error"])
+}
+
+func TestGetOrder_RepoError(t *testing.T) {
+	t.Parallel()
+
+	store := &fakeStore{findErr: errors.New("connection refused")}
+	srv := newTestServer(store, &fakePublisher{})
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/orders/some-id")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+
+	var got map[string]string
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&got))
+	require.Equal(t, "failed to fetch order", got["error"])
+}
+
+func TestHealthz(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(newFakeStore(), &fakePublisher{})
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/healthz")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var got map[string]string
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&got))
+	require.Equal(t, "ok", got["status"])
 }
 
 func TestGetOrder_Found(t *testing.T) {

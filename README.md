@@ -126,13 +126,82 @@ Other useful ports once `make up` is running:
 
 Tear down with `make down`.
 
+### Running a service directly with `go run` (outside Docker)
+
+Each service reads its configuration from environment variables, falling back
+to the defaults baked into `internal/config/config.go` (see `getEnv`) when a
+variable isn't set. `make up` never needs this — Docker Compose sets these
+for you — but I run a service this way when I want to iterate on it against
+the rest of the stack still running in Docker (`make up` for everything
+except that one service, then `go run` it locally). If a variable isn't
+listed for a service, that service doesn't read it.
+
+The "built-in default" column below is what you get if you don't set the
+variable at all — note that it's tuned for connecting to a bare local
+Postgres/Mongo on their standard ports, **not** for pointing at a `make up`
+stack: Compose republishes Postgres on host port `5434` (not `5432`), and the
+SNS/SQS/LocalStack variables have no built-in default at all since there's no
+sane fallback for an ARN or queue URL. To run a service against a `make up`
+stack, export the values in the "value for a `make up` stack" column — the
+worked example below does exactly that for order-service.
+
+**order-service**
+
+| Variable | Purpose | Built-in default | Value for a `make up` stack |
+|---|---|---|---|
+| `HTTP_PORT` | Port the REST API listens on | `8080` | `8080` |
+| `DATABASE_URL` | Postgres connection string | `postgres://postgres:postgres@localhost:5432/orders?sslmode=disable` | `postgres://postgres:postgres@localhost:5434/orders?sslmode=disable` |
+| `SNS_TOPIC_ARN` | ARN of the `order-events` SNS topic to publish `OrderCreated` to | *(empty — required)* | `arn:aws:sns:us-east-1:000000000000:order-events` |
+| `AWS_REGION` | AWS region for the SNS client | `us-east-1` | `us-east-1` |
+| `AWS_ENDPOINT_URL` | Override endpoint, points the SNS client at LocalStack instead of real AWS | *(empty — talks to real AWS)* | `http://localhost:4566` |
+| `AWS_ACCESS_KEY_ID` | Credential picked up by the AWS SDK's default chain — LocalStack accepts any value | *(none — AWS SDK default chain)* | `test` |
+| `AWS_SECRET_ACCESS_KEY` | Credential picked up by the AWS SDK's default chain — LocalStack accepts any value | *(none — AWS SDK default chain)* | `test` |
+
+**inventory-service**
+
+| Variable | Purpose | Built-in default | Value for a `make up` stack |
+|---|---|---|---|
+| `HTTP_PORT` | Port the health/metrics HTTP server listens on | `8081` | `8081` |
+| `MONGO_URI` | MongoDB connection string | `mongodb://localhost:27017` | `mongodb://localhost:27017` |
+| `MONGO_DB_NAME` | MongoDB database name reservations are written to | `inventory` | `inventory` |
+| `SQS_QUEUE_URL` | URL of the `inventory-queue` this service long-polls | *(empty — required)* | `http://localhost:4566/000000000000/inventory-queue` |
+| `AWS_REGION` | AWS region for the SQS client | `us-east-1` | `us-east-1` |
+| `AWS_ENDPOINT_URL` | Override endpoint, points the SQS client at LocalStack instead of real AWS | *(empty — talks to real AWS)* | `http://localhost:4566` |
+| `AWS_ACCESS_KEY_ID` | Credential picked up by the AWS SDK's default chain — LocalStack accepts any value | *(none — AWS SDK default chain)* | `test` |
+| `AWS_SECRET_ACCESS_KEY` | Credential picked up by the AWS SDK's default chain — LocalStack accepts any value | *(none — AWS SDK default chain)* | `test` |
+
+**notification-service**
+
+| Variable | Purpose | Built-in default | Value for a `make up` stack |
+|---|---|---|---|
+| `HTTP_PORT` | Port the health/metrics HTTP server listens on | `8082` | `8082` |
+| `SQS_QUEUE_URL` | URL of the `notification-queue` this service long-polls | *(empty — required)* | `http://localhost:4566/000000000000/notification-queue` |
+| `AWS_REGION` | AWS region for the SQS client | `us-east-1` | `us-east-1` |
+| `AWS_ENDPOINT_URL` | Override endpoint, points the SQS client at LocalStack instead of real AWS | *(empty — talks to real AWS)* | `http://localhost:4566` |
+| `AWS_ACCESS_KEY_ID` | Credential picked up by the AWS SDK's default chain — LocalStack accepts any value | *(none — AWS SDK default chain)* | `test` |
+| `AWS_SECRET_ACCESS_KEY` | Credential picked up by the AWS SDK's default chain — LocalStack accepts any value | *(none — AWS SDK default chain)* | `test` |
+
+Example — running order-service directly against a `make up` stack:
+
+```bash
+cd services/order-service
+export DATABASE_URL="postgres://postgres:postgres@localhost:5434/orders?sslmode=disable"
+export SNS_TOPIC_ARN="arn:aws:sns:us-east-1:000000000000:order-events"
+export AWS_ENDPOINT_URL="http://localhost:4566"
+export AWS_REGION="us-east-1"
+export AWS_ACCESS_KEY_ID="test"
+export AWS_SECRET_ACCESS_KEY="test"
+go run ./cmd/server
+```
+
 ## Development
 
 ```bash
 make build             # go build for all three services
 make test              # fast unit tests, no Docker needed
-make test-integration  # order-service + inventory-service repositories against real
-                        # Postgres/Mongo via testcontainers-go (needs Docker)
+make test-integration  # order-service + inventory-service repositories and cmd/server
+                        # connect-with-retry logic against real Postgres/Mongo via
+                        # testcontainers-go (needs Docker)
 make lint               # go vet for all three services
 make tidy               # go mod tidy for all three services
 ```
