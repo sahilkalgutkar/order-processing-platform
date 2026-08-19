@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package order.v1;
+
+option go_package = "github.com/skalgutkar/order-processing-platform/gen/order/v1;orderv1";
+
+import "google/protobuf/timestamp.proto";
+
+// OrderService is the gRPC contract for order-service. It mirrors the
+// existing REST API 1:1 (see internal/api/http.go) — the intent is to
+// serve both from the same handlers via grpc-gateway, not to maintain
+// two divergent APIs.
+//
+// Not yet wired up: this repo doesn't vendor protoc/buf codegen output.
+// To generate it:
+//   1. brew install protobuf buf
+//   2. buf generate  (see buf.gen.yaml you'd add alongside this file)
+// The REST API is fully functional today without this step.
+service OrderService {
+  rpc CreateOrder(CreateOrderRequest) returns (Order);
+  rpc GetOrder(GetOrderRequest) returns (Order);
+}
+
+message CreateOrderRequest {
+  string customer_id = 1;
+  string item_sku = 2;
+  int32 quantity = 3;
+}
+
+message GetOrderRequest {
+  string id = 1;
+}
+
+enum OrderStatus {
+  ORDER_STATUS_UNSPECIFIED = 0;
+  ORDER_STATUS_PENDING = 1;
+  ORDER_STATUS_CONFIRMED = 2;
+}
+
+message Order {
+  string id = 1;
+  string customer_id = 2;
+  string item_sku = 3;
+  int32 quantity = 4;
+  OrderStatus status = 5;
+  google.protobuf.Timestamp created_at = 6;
+}

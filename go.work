@@ -1,0 +1,7 @@
+go 1.24
+
+use (
+	./services/order-service
+	./services/inventory-service
+	./services/notification-service
+)
