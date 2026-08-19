@@ -12,7 +12,6 @@ import (
 
 	"github.com/skalgutkar/order-processing-platform/services/inventory-service/internal/domain"
 	"github.com/skalgutkar/order-processing-platform/services/inventory-service/internal/events"
-	"github.com/skalgutkar/order-processing-platform/services/inventory-service/internal/repository"
 )
 
 // StockLookup abstracts "how much of this SKU do we have." A real system
@@ -29,15 +28,31 @@ type FixedStock struct {
 
 func (f FixedStock) Available(string) int { return f.Default }
 
+// SQSClient is the subset of *sqs.Client the consumer actually calls,
+// defined here rather than depending on the concrete AWS type — same
+// dependency-inversion shape as order-service's OrderStore/EventPublisher
+// interfaces. Lets handle()/Run() be unit-tested against a fake instead of
+// needing a real (or LocalStack) SQS queue.
+type SQSClient interface {
+	ReceiveMessage(ctx context.Context, params *sqs.ReceiveMessageInput, optFns ...func(*sqs.Options)) (*sqs.ReceiveMessageOutput, error)
+	DeleteMessage(ctx context.Context, params *sqs.DeleteMessageInput, optFns ...func(*sqs.Options)) (*sqs.DeleteMessageOutput, error)
+}
+
+// ReservationSaver is the one method the consumer needs from
+// *repository.ReservationRepository — same reasoning as SQSClient above.
+type ReservationSaver interface {
+	Save(ctx context.Context, res domain.Reservation) error
+}
+
 type Consumer struct {
-	sqsClient *sqs.Client
+	sqsClient SQSClient
 	queueURL  string
-	repo      *repository.ReservationRepository
+	repo      ReservationSaver
 	stock     StockLookup
 	logger    *slog.Logger
 }
 
-func New(sqsClient *sqs.Client, queueURL string, repo *repository.ReservationRepository, stock StockLookup, logger *slog.Logger) *Consumer {
+func New(sqsClient SQSClient, queueURL string, repo ReservationSaver, stock StockLookup, logger *slog.Logger) *Consumer {
 	return &Consumer{sqsClient: sqsClient, queueURL: queueURL, repo: repo, stock: stock, logger: logger}
 }
 
