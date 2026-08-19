@@ -14,14 +14,24 @@ import (
 	"github.com/skalgutkar/order-processing-platform/services/notification-service/internal/notifier"
 )
 
+// SQSClient is the subset of *sqs.Client the consumer actually calls,
+// defined here rather than depending on the concrete AWS type — same
+// dependency-inversion shape as order-service's OrderStore/EventPublisher
+// interfaces. Lets handle()/Run() be unit-tested against a fake instead of
+// needing a real (or LocalStack) SQS queue.
+type SQSClient interface {
+	ReceiveMessage(ctx context.Context, params *sqs.ReceiveMessageInput, optFns ...func(*sqs.Options)) (*sqs.ReceiveMessageOutput, error)
+	DeleteMessage(ctx context.Context, params *sqs.DeleteMessageInput, optFns ...func(*sqs.Options)) (*sqs.DeleteMessageOutput, error)
+}
+
 type Consumer struct {
-	sqsClient *sqs.Client
+	sqsClient SQSClient
 	queueURL  string
 	notifier  notifier.Notifier
 	logger    *slog.Logger
 }
 
-func New(sqsClient *sqs.Client, queueURL string, n notifier.Notifier, logger *slog.Logger) *Consumer {
+func New(sqsClient SQSClient, queueURL string, n notifier.Notifier, logger *slog.Logger) *Consumer {
 	return &Consumer{sqsClient: sqsClient, queueURL: queueURL, notifier: n, logger: logger}
 }
 
