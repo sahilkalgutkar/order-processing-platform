@@ -160,6 +160,46 @@ func TestRun_ProcessesMessagesThenExitsOnContextCancel(t *testing.T) {
 	assert.Contains(t, fake.deletedReceiptHandles, "receipt-1")
 }
 
+func TestHandle_DeleteFails_IsLoggedNotPropagated(t *testing.T) {
+	fake := &fakeSQSClient{deleteErr: errors.New("queue unavailable")}
+	n := &fakeNotifier{}
+	c := newTestConsumer(fake, n)
+
+	msg := sqstypes.Message{Body: aws.String(validBody), ReceiptHandle: aws.String("receipt-1")}
+
+	// DeleteMessage failing must not panic or block handle() — the message
+	// simply becomes visible again on SQS's side and gets retried.
+	require.NotPanics(t, func() { c.handle(context.Background(), msg) })
+	require.Len(t, n.notified, 1)
+	assert.Contains(t, fake.deletedReceiptHandles, "receipt-1")
+}
+
+func TestRun_ReceiveError_RetriesThenExitsOnContextCancel(t *testing.T) {
+	fake := &fakeSQSClient{receiveErr: errors.New("sqs unavailable")}
+	n := &fakeNotifier{}
+	c := newTestConsumer(fake, n)
+
+	// A persistent ReceiveMessage error should be logged and retried after
+	// a backoff rather than crashing the consumer loop; canceling the
+	// context while the loop is asleep must still make Run return.
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		c.Run(ctx)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not return after context cancellation")
+	}
+
+	assert.Empty(t, n.notified)
+}
+
 func TestRun_ExitsImmediatelyOnAlreadyCanceledContext(t *testing.T) {
 	fake := &fakeSQSClient{}
 	n := &fakeNotifier{}

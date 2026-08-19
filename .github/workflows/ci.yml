@@ -37,9 +37,12 @@ jobs:
       # integration tests spin up the real thing via testcontainers-go,
       # gated behind the `integration` build tag so the step above stays
       # fast and Docker-free. notification-service has no repository package.
+      # cmd/server's connectPostgres/connectMongo retry-until-ready loops
+      # get the same treatment: a real (throwaway) container instead of
+      # mocking the driver.
       - name: go test (integration)
         if: matrix.service == 'order-service' || matrix.service == 'inventory-service'
-        run: go test -tags=integration -race -coverprofile=coverage-integration.out -covermode=atomic ./internal/repository/...
+        run: go test -tags=integration -race -coverprofile=coverage-integration.out -covermode=atomic ./internal/repository/... ./cmd/server/...
 
       - name: Upload coverage
         uses: codecov/codecov-action@v5

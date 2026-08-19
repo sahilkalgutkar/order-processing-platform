@@ -93,6 +93,24 @@ func TestOrderRepository_FindByID_NotFound(t *testing.T) {
 	require.ErrorIs(t, err, repository.ErrOrderNotFound)
 }
 
+func TestOrderRepository_FindByID_WrapsDriverError(t *testing.T) {
+	pool := setupPostgres(t)
+	repo := repository.NewOrderRepository(pool)
+
+	// An already-canceled context forces QueryRow's Scan to fail with
+	// something other than pgx.ErrNoRows, exercising the generic
+	// fmt.Errorf wrapping branch in FindByID without needing a real
+	// network partition.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := repo.FindByID(ctx, uuid.NewString())
+
+	require.Error(t, err)
+	require.NotErrorIs(t, err, repository.ErrOrderNotFound)
+	require.Contains(t, err.Error(), "find order")
+}
+
 func TestOrderRepository_Save_DuplicateID(t *testing.T) {
 	pool := setupPostgres(t)
 	repo := repository.NewOrderRepository(pool)
