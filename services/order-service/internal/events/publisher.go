@@ -28,12 +28,22 @@ type Publisher interface {
 	PublishOrderCreated(ctx context.Context, o *domain.Order) error
 }
 
+// SNSClient is the one method SNSPublisher actually calls, defined here
+// rather than depending on the concrete *sns.Client — same
+// dependency-inversion shape as OrderStore/EventPublisher at the HTTP
+// layer. Lets the JSON body and message-attribute construction be
+// unit-tested against a fake instead of needing a real (or LocalStack) SNS
+// topic.
+type SNSClient interface {
+	Publish(ctx context.Context, params *sns.PublishInput, optFns ...func(*sns.Options)) (*sns.PublishOutput, error)
+}
+
 type SNSPublisher struct {
-	client   *sns.Client
+	client   SNSClient
 	topicArn string
 }
 
-func NewSNSPublisher(client *sns.Client, topicArn string) *SNSPublisher {
+func NewSNSPublisher(client SNSClient, topicArn string) *SNSPublisher {
 	return &SNSPublisher{client: client, topicArn: topicArn}
 }
 
