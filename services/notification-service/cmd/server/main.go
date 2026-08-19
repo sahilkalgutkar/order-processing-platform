@@ -9,8 +9,6 @@ import (
 	"syscall"
 	"time"
 
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/skalgutkar/order-processing-platform/services/notification-service/internal/config"
@@ -18,6 +16,13 @@ import (
 	"github.com/skalgutkar/order-processing-platform/services/notification-service/internal/notifier"
 )
 
+// main is pure process wiring: load config, dial the dependency built by
+// newSQSClient in bootstrap.go, start the consumer and HTTP server, and
+// block until a signal asks for a graceful shutdown. There's no branching
+// left to assert on here once newSQSClient (the part with real config
+// logic) is factored out — what remains is exercised end-to-end by
+// `docker compose up`, not a unit test. See the codecov.yml `ignore:` entry
+// for this file.
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	cfg := config.Load()
@@ -56,16 +61,4 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(shutdownCtx)
-}
-
-func newSQSClient(ctx context.Context, cfg config.Config) (*sqs.Client, error) {
-	awsCfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(cfg.AWSRegion))
-	if err != nil {
-		return nil, err
-	}
-	return sqs.NewFromConfig(awsCfg, func(o *sqs.Options) {
-		if cfg.AWSEndpoint != "" {
-			o.BaseEndpoint = &cfg.AWSEndpoint
-		}
-	}), nil
 }

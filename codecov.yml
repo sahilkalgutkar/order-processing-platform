@@ -22,3 +22,18 @@ flags:
   notification-service:
     paths:
       - services/notification-service/
+
+# cmd/server/main.go in each service is process wiring only: load config,
+# dial the dependencies built by cmd/server/bootstrap.go, start the
+# consumer/HTTP server, and block on a signal before a bounded graceful
+# shutdown, os.Exit(1) on startup failure. The retry loops and AWS config
+# branching that used to live in main.go were split out into bootstrap.go
+# specifically so they'd stay covered (connectPostgres/connectMongo via the
+# testcontainers-backed integration tests, newSNSClient/newSQSClient via
+# unit tests) — what's left in main.go itself has no branches worth
+# asserting on beyond "did os.Exit get called," which is exercised for real
+# by `docker compose up`, not a unit test. Excluding it here keeps the 80%
+# target measuring code with meaningful branches instead of padding a
+# startup func with tests that assert http.Server didn't panic.
+ignore:
+  - "services/*/cmd/server/main.go"
