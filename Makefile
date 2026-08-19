@@ -1,4 +1,4 @@
-.PHONY: up down logs build test tidy lint fmt curl-create-order
+.PHONY: up down logs build test test-integration tidy lint fmt curl-create-order
 
 up: ## Start the full local stack (postgres, mongo, localstack, all services, prometheus, grafana)
 	docker compose up --build
@@ -18,6 +18,10 @@ test: ## Run unit tests for all three services
 	cd services/order-service && go test ./...
 	cd services/inventory-service && go test ./...
 	cd services/notification-service && go test ./...
+
+test-integration: ## Run repository integration tests against real Postgres/Mongo via testcontainers-go (requires Docker)
+	cd services/order-service && go test -tags=integration ./internal/repository/...
+	cd services/inventory-service && go test -tags=integration ./internal/repository/...
 
 tidy: ## go mod tidy for all three services
 	cd services/order-service && go mod tidy

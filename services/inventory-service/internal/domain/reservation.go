@@ -5,7 +5,7 @@ import "time"
 type ReservationStatus string
 
 const (
-	ReservationConfirmed  ReservationStatus = "confirmed"
+	ReservationConfirmed   ReservationStatus = "confirmed"
 	ReservationBackordered ReservationStatus = "backordered"
 )
 

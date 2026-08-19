@@ -3,11 +3,11 @@ package config
 import "os"
 
 type Config struct {
-	HTTPPort     string
-	DatabaseURL  string
-	SNSTopicARN  string
-	AWSEndpoint  string // set for localstack; empty in real AWS
-	AWSRegion    string
+	HTTPPort    string
+	DatabaseURL string
+	SNSTopicARN string
+	AWSEndpoint string // set for localstack; empty in real AWS
+	AWSRegion   string
 }
 
 func Load() Config {

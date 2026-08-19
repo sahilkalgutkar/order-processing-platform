@@ -129,10 +129,12 @@ Tear down with `make down`.
 ## Development
 
 ```bash
-make build   # go build for all three services
-make test    # go test for all three services
-make lint    # go vet for all three services
-make tidy    # go mod tidy for all three services
+make build             # go build for all three services
+make test              # fast unit tests, no Docker needed
+make test-integration  # order-service + inventory-service repositories against real
+                        # Postgres/Mongo via testcontainers-go (needs Docker)
+make lint               # go vet for all three services
+make tidy               # go mod tidy for all three services
 ```
 
 All three services build, vet clean, and pass their test suites as of the
@@ -172,12 +174,10 @@ scripts/                LocalStack topic/queue bootstrap
 
 1. Generate the gRPC server from `proto/order/v1/order.proto` via `buf`,
    serve it alongside REST with `grpc-gateway`.
-2. Add `testcontainers-go` integration tests for the Postgres and Mongo
-   repositories (currently only unit-tested via interfaces/fakes).
-3. Wire OpenTelemetry trace context through the SNS message attributes so
+2. Wire OpenTelemetry trace context through the SNS message attributes so
    a trace spans order-service → inventory-service/notification-service.
-4. Add a reconciliation job for orders whose SNS publish failed
+3. Add a reconciliation job for orders whose SNS publish failed
    (`order-service` logs but doesn't retry today).
-5. Load test with `k6` or `vegeta` against `POST /orders` and publish the
+4. Load test with `k6` or `vegeta` against `POST /orders` and publish the
    results — gives you real p50/p99 numbers to put in interview talking
    points or on the resume.

@@ -20,7 +20,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.25"
           cache-dependency-path: services/${{ matrix.service }}/go.sum
 
       - name: go vet
@@ -32,11 +32,20 @@ jobs:
       - name: go test
         run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
 
+      # order-service and inventory-service are the two with a repository/
+      # package that talks to a real datastore (Postgres, MongoDB) — their
+      # integration tests spin up the real thing via testcontainers-go,
+      # gated behind the `integration` build tag so the step above stays
+      # fast and Docker-free. notification-service has no repository package.
+      - name: go test (integration)
+        if: matrix.service == 'order-service' || matrix.service == 'inventory-service'
+        run: go test -tags=integration -race -coverprofile=coverage-integration.out -covermode=atomic ./internal/repository/...
+
       - name: Upload coverage
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: services/${{ matrix.service }}/coverage.out
+          files: services/${{ matrix.service }}/coverage.out,services/${{ matrix.service }}/coverage-integration.out
           flags: ${{ matrix.service }}
           fail_ci_if_error: false
 
