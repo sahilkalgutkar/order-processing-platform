@@ -9,17 +9,20 @@ import (
 	"syscall"
 	"time"
 
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"github.com/skalgutkar/order-processing-platform/services/inventory-service/internal/config"
 	"github.com/skalgutkar/order-processing-platform/services/inventory-service/internal/consumer"
 	"github.com/skalgutkar/order-processing-platform/services/inventory-service/internal/repository"
 )
 
+// main is pure process wiring: load config, dial dependencies built by the
+// helpers in bootstrap.go, start the consumer and HTTP server, and block
+// until a signal asks for a graceful shutdown. There's no branching left to
+// assert on here once connectMongo/newSQSClient (the parts with real
+// retry/config logic) are factored out — what remains is exercised
+// end-to-end by `docker compose up`, not a unit test. See the codecov.yml
+// `ignore:` entry for this file.
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	cfg := config.Load()
@@ -66,35 +69,4 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(shutdownCtx)
-}
-
-func connectMongo(ctx context.Context, uri string, logger *slog.Logger) (*mongo.Client, error) {
-	var client *mongo.Client
-	var err error
-
-	for attempt := 1; attempt <= 10; attempt++ {
-		client, err = mongo.Connect(ctx, options.Client().ApplyURI(uri))
-		if err == nil {
-			if pingErr := client.Ping(ctx, nil); pingErr == nil {
-				return client, nil
-			} else {
-				err = pingErr
-			}
-		}
-		logger.Warn("mongo not ready yet, retrying", "attempt", attempt, "error", err)
-		time.Sleep(2 * time.Second)
-	}
-	return nil, err
-}
-
-func newSQSClient(ctx context.Context, cfg config.Config) (*sqs.Client, error) {
-	awsCfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(cfg.AWSRegion))
-	if err != nil {
-		return nil, err
-	}
-	return sqs.NewFromConfig(awsCfg, func(o *sqs.Options) {
-		if cfg.AWSEndpoint != "" {
-			o.BaseEndpoint = &cfg.AWSEndpoint
-		}
-	}), nil
 }

@@ -66,12 +66,22 @@ type fakeSQSClient struct {
 	receiveErr       error
 	receiveCalls     int
 
+	// cancelOnReceive, when set, runs before receiveErr is returned — it
+	// simulates ReceiveMessage's context being canceled out from under it
+	// (e.g. shutdown racing an in-flight long-poll) so Run observes
+	// ctx.Err() != nil in the same iteration the error comes back, rather
+	// than on a later loop after sleeping through the backoff.
+	cancelOnReceive func()
+
 	deletedReceiptHandles []string
 	deleteErr             error
 }
 
 func (f *fakeSQSClient) ReceiveMessage(context.Context, *sqs.ReceiveMessageInput, ...func(*sqs.Options)) (*sqs.ReceiveMessageOutput, error) {
 	if f.receiveErr != nil {
+		if f.cancelOnReceive != nil {
+			f.cancelOnReceive()
+		}
 		return nil, f.receiveErr
 	}
 	if f.receiveCalls >= len(f.receiveResponses) {
@@ -195,6 +205,34 @@ func TestRun_ReceiveError_RetriesThenExitsOnContextCancel(t *testing.T) {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("Run did not return after context cancellation")
+	}
+
+	assert.Empty(t, n.notified)
+}
+
+func TestRun_ReceiveErrorWithCanceledContext_ReturnsWithoutSleeping(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	fake := &fakeSQSClient{
+		receiveErr:      errors.New("sqs unavailable"),
+		cancelOnReceive: cancel,
+	}
+	n := &fakeNotifier{}
+	c := newTestConsumer(fake, n)
+
+	// If ReceiveMessage errors and the context is already canceled (e.g.
+	// shutdown raced the in-flight long-poll), Run must take the
+	// ctx.Err() != nil branch and return immediately rather than logging,
+	// sleeping for the 2s backoff, and looping again.
+	done := make(chan struct{})
+	go func() {
+		c.Run(ctx)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Fatal("Run did not return promptly; it likely took the retry-sleep branch instead of the ctx.Err() branch")
 	}
 
 	assert.Empty(t, n.notified)
