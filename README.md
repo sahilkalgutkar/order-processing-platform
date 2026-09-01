@@ -116,13 +116,30 @@ docker compose logs notification-service | grep "notification sent"
 
 Other useful ports once `make up` is running:
 
-| Service          | URL                          |
-|------------------|-------------------------------|
-| order-service    | http://localhost:8080         |
-| inventory-service| http://localhost:8081/healthz |
-| notification-service | http://localhost:8082/healthz |
-| Prometheus       | http://localhost:9090         |
-| Grafana          | http://localhost:3000 (admin/admin) |
+| Service          | URL                          | Host port override |
+|------------------|-------------------------------|---|
+| order-service    | http://localhost:8080         | `ORDER_SERVICE_HOST_PORT` |
+| inventory-service| http://localhost:8081/healthz | `INVENTORY_SERVICE_HOST_PORT` |
+| notification-service | http://localhost:8082/healthz | `NOTIFICATION_SERVICE_HOST_PORT` |
+| Prometheus       | http://localhost:9090         | `PROMETHEUS_HOST_PORT` |
+| Grafana          | http://localhost:3000 (admin/admin) | `GRAFANA_HOST_PORT` |
+| Postgres         | localhost:5434                | `POSTGRES_HOST_PORT` |
+| MongoDB          | localhost:27017               | `MONGO_HOST_PORT` |
+| LocalStack       | http://localhost:4566         | `LOCALSTACK_HOST_PORT` |
+
+> Every host port above is overridable, which matters because 27017, 4566, 9090
+> and 3000 are usually already taken by something. Set them inline or in `.env`
+> (see `.env.example`):
+>
+> ```bash
+> MONGO_HOST_PORT=27018 GRAFANA_HOST_PORT=3001 make up
+> ```
+>
+> Only the host side moves — inside the compose network the services still
+> reach each other on the standard ports, so the stack itself needs no other
+> change. If you also run a service outside Docker (below), point its
+> `DATABASE_URL`/`MONGO_URI`/`AWS_ENDPOINT_URL` at whichever host port you
+> chose.
 
 Tear down with `make down`.
 

@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: orders
     ports:
-      - "5434:5432"
+      - "${POSTGRES_HOST_PORT:-5434}:5432"
     volumes:
       - ./services/order-service/migrations:/docker-entrypoint-initdb.d
     healthcheck:
@@ -18,7 +18,7 @@ services:
   mongo:
     image: mongo:7
     ports:
-      - "27017:27017"
+      - "${MONGO_HOST_PORT:-27017}:27017"
     healthcheck:
       test: echo 'db.runCommand("ping").ok' | mongosh --quiet
       interval: 5s
@@ -31,7 +31,7 @@ services:
       SERVICES: sns,sqs
       DEBUG: 0
     ports:
-      - "4566:4566"
+      - "${LOCALSTACK_HOST_PORT:-4566}:4566"
     volumes:
       - ./scripts/localstack-init.sh:/etc/localstack/init/ready.d/localstack-init.sh
     healthcheck:
@@ -44,7 +44,7 @@ services:
     build:
       context: ./services/order-service
     ports:
-      - "8080:8080"
+      - "${ORDER_SERVICE_HOST_PORT:-8080}:8080"
     environment:
       HTTP_PORT: "8080"
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/orders?sslmode=disable
@@ -63,7 +63,7 @@ services:
     build:
       context: ./services/inventory-service
     ports:
-      - "8081:8081"
+      - "${INVENTORY_SERVICE_HOST_PORT:-8081}:8081"
     environment:
       HTTP_PORT: "8081"
       MONGO_URI: mongodb://mongo:27017
@@ -83,7 +83,7 @@ services:
     build:
       context: ./services/notification-service
     ports:
-      - "8082:8082"
+      - "${NOTIFICATION_SERVICE_HOST_PORT:-8082}:8082"
     environment:
       HTTP_PORT: "8082"
       SQS_QUEUE_URL: http://localstack:4566/000000000000/notification-queue
@@ -98,7 +98,7 @@ services:
   prometheus:
     image: prom/prometheus:v2.55.1
     ports:
-      - "9090:9090"
+      - "${PROMETHEUS_HOST_PORT:-9090}:9090"
     volumes:
       - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml
     depends_on:
@@ -109,7 +109,7 @@ services:
   grafana:
     image: grafana/grafana:11.3.0
     ports:
-      - "3000:3000"
+      - "${GRAFANA_HOST_PORT:-3000}:3000"
     environment:
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_AUTH_ANONYMOUS_ENABLED: "true"
